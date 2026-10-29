@@ -33,6 +33,10 @@ CJavaWrapper::CJavaWrapper(JNIEnv *env, jobject activity)
     s_showEditObject = env->GetMethodID(clas, "showEditObject", "()V");
     s_hideEditObject = env->GetMethodID(clas, "hideEditObject", "()V");
 
+    s_showWebView = env->GetMethodID(clas, "showWebView", "([B)V");
+    s_hideWebView = env->GetMethodID(clas, "hideWebView", "()V");
+    s_evalWebView = env->GetMethodID(clas, "evalWebView", "([B)V");
+
     env->DeleteLocalRef(clas);
 }
 
@@ -190,4 +194,51 @@ void CJavaWrapper::HideEditObject() {
     }
 
     env->CallVoidMethod(this->activity, this->s_hideEditObject);
+}
+
+void CJavaWrapper::ShowWebView(const char* url)
+{
+    JNIEnv* env;
+    javaVM->GetEnv((void**)&env, JNI_VERSION_1_6);
+    if (!env)
+    {
+        FLog("No env");
+        return;
+    }
+
+    std::string sUrl(url ? url : "");
+    jbyteArray jUrl = as_byte_array((unsigned char*)sUrl.c_str(), sUrl.length());
+    env->CallVoidMethod(this->activity, this->s_showWebView, jUrl);
+    env->DeleteLocalRef(jUrl);
+    EXCEPTION_CHECK(env);
+}
+
+void CJavaWrapper::HideWebView()
+{
+    JNIEnv* env;
+    javaVM->GetEnv((void**)&env, JNI_VERSION_1_6);
+    if (!env)
+    {
+        FLog("No env");
+        return;
+    }
+    env->CallVoidMethod(this->activity, this->s_hideWebView);
+    EXCEPTION_CHECK(env);
+}
+
+void CJavaWrapper::EvalWebView(const char* js)
+{
+    JNIEnv* env;
+    javaVM->GetEnv((void**)&env, JNI_VERSION_1_6);
+    if (!env)
+    {
+        FLog("No env");
+        return;
+    }
+
+    std::string sJs(js ? js : "");
+    jbyteArray jJs = as_byte_array((unsigned char*)sJs.c_str(), sJs.length());
+    env->CallVoidMethod(this->activity, this->s_evalWebView, jJs);
+    env->DeleteLocalRef(jJs);
+    EXCEPTION_CHECK(env);
 }

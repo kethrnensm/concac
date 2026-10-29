@@ -307,6 +307,18 @@ extern "C" {
 				pJavaWrapper->HideKeyboard();
 		}
 	}
+	JNIEXPORT void JNICALL Java_com_rstarx_hexrays_game_SAMP_onWebViewDownloadComplete(JNIEnv *pEnv, jobject thiz)
+	{
+		extern void WebView_OnDownloadComplete();
+		WebView_OnDownloadComplete();
+	}
+	JNIEXPORT void JNICALL Java_com_rstarx_hexrays_game_SAMP_onWebViewFailed(JNIEnv *pEnv, jobject thiz, jstring message)
+	{
+		const char* msg = message ? pEnv->GetStringUTFChars(message, NULL) : NULL;
+		extern void WebView_OnFailed(const char* message);
+		WebView_OnFailed(msg ? msg : "");
+		if (msg) pEnv->ReleaseStringUTFChars(message, msg);
+	}
 	JNIEXPORT void JNICALL Java_com_rstarx_hexrays_game_ui_dialog_DialogManager_sendDialogResponse(JNIEnv* pEnv, jobject thiz, jint i3, jint i, jint i2, jbyteArray str)
 	{
 		jboolean isCopy = true;

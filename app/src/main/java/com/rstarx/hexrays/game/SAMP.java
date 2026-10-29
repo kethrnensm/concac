@@ -14,6 +14,7 @@ import com.joom.paranoid.Obfuscate;
 import com.rstarx.hexrays.game.ui.AttachEdit;
 import com.rstarx.hexrays.game.ui.CustomKeyboard;
 import com.rstarx.hexrays.game.ui.LoadingScreen;
+import com.rstarx.hexrays.game.ui.WebViewOverlay;
 import androidx.activity.OnBackPressedCallback;
 import com.rstarx.hexrays.game.ui.dialog.DialogManager;
 import com.rstarx.hexrays.launcher.util.SharedPreferenceCore;
@@ -33,6 +34,7 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
 
     private AttachEdit mAttachEdit;
     private LoadingScreen mLoadingScreen;
+    private WebViewOverlay mWebView;
 
     public static SAMP getInstance() {
         return instance;
@@ -82,6 +84,31 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
         final String rightBtnText = new String(bArr4, StandardCharsets.UTF_8);
         runOnUiThread(() -> { this.mDialog.show(dialogId, dialogTypeId, caption, content, leftBtnText, rightBtnText); });
     }
+
+    // ===== WebView overlay (called from native via CJavaWrapper) =====
+
+    /** Show the in-game WebView and load the given URL. */
+    public void showWebView(byte[] urlBytes) {
+        final String url = new String(urlBytes, StandardCharsets.UTF_8);
+        if (mWebView != null) mWebView.show(url);
+    }
+
+    /** Hide the in-game WebView. */
+    public void hideWebView() {
+        if (mWebView != null) mWebView.hide();
+    }
+
+    /** Push JS into the loaded page (e.g. progress updates). */
+    public void evalWebView(byte[] jsBytes) {
+        final String js = new String(jsBytes, StandardCharsets.UTF_8);
+        if (mWebView != null) mWebView.eval(js);
+    }
+
+    /** Fired by the page (via JS bridge) when its download/prep finished OK. */
+    private native void onWebViewDownloadComplete();
+
+    /** Fired on a hard WebView load failure. */
+    private native void onWebViewFailed(String message);
 
     private native void onInputEnd(byte[] str);
     @Override
@@ -134,6 +161,23 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
         mDialog = new DialogManager(this);
         mAttachEdit = new AttachEdit(this);
         mLoadingScreen = new LoadingScreen(this);
+        mWebView = new WebViewOverlay(this);
+        mWebView.setListener(new WebViewOverlay.Listener() {
+            @Override
+            public void onWebViewReady() {
+                Log.i(TAG, "WebView ready");
+            }
+            @Override
+            public void onDownloadComplete() {
+                Log.i(TAG, "WebView download complete -> notifying native");
+                try { onWebViewDownloadComplete(); } catch (UnsatisfiedLinkError ignored) {}
+            }
+            @Override
+            public void onWebViewError(String message) {
+                Log.e(TAG, "WebView error: " + message);
+                try { onWebViewFailed(message == null ? "" : message); } catch (UnsatisfiedLinkError ignored) {}
+            }
+        });
         instance = this;
 
         // 1. Nhận thông tin IP & Port từ HomeFragment truyền sang

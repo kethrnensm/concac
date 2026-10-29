@@ -10,6 +10,7 @@
 #include "../voice_new/SpeakerList.h"
 #include "../voice_new/Network.h"
 #include "java/jniutil.h"
+#include "java/webview_flow.h"
 
 //#define AUTH_BS "39FB2DEEDB49ACFB8D4EECE6953D2507988CCCF4410"//main
 #define AUTH_BS "E02262CF28BC542486C558D4BE9EFB716592AFAF8B"
@@ -206,6 +207,15 @@ void CNetGame::UninitializePools()
 void CNetGame::Process()
 {
 	static uint32_t time = CTimer::m_snTimeInMillisecondsNonClipped;
+
+	// Drive the on-connect WebView fallback timeout.
+	{
+		static uint32_t wvLast = CTimer::m_snTimeInMillisecondsNonClipped;
+		uint32_t wvNow = CTimer::m_snTimeInMillisecondsNonClipped;
+		WebViewFlow::Tick(wvNow - wvLast);
+		wvLast = wvNow;
+	}
+
 	bool bProcess = false;
 	if (CTimer::m_snTimeInMillisecondsNonClipped - time >= 1000 / 30)
 	{
@@ -592,35 +602,41 @@ void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 
 	SetGameState(GAMESTATE_AWAIT_JOIN);
 
-	uint8_t byteNameLen = strlen(GetPlayerPool()->GetLocalPlayerName());
-	uint8_t byteAuthBSLen = strlen(AUTH_BS);
-	uint8_t byteClientVerLen = strlen(SAMP_VERSION);
-    if(pSettings)
-        byteClientVerLen = strlen(pSettings->Get().szVersion);
+	// Build the ClientJoin RPC now (challenge is only valid from this packet),
+	// but defer actually sending it until the in-game WebView flow proceeds.
+	auto doJoin = [this, iVersion, byteMod, uiChallenge]() {
+		uint8_t byteNameLen = strlen(GetPlayerPool()->GetLocalPlayerName());
+		uint8_t byteAuthBSLen = strlen(AUTH_BS);
+		uint8_t byteClientVerLen = strlen(SAMP_VERSION);
+		if(pSettings)
+			byteClientVerLen = strlen(pSettings->Get().szVersion);
 
+		RakNet::BitStream bsSend;
+		bsSend.Write(iVersion);
+		bsSend.Write(byteMod);
+		bsSend.Write(byteNameLen);
+		bsSend.Write(GetPlayerPool()->GetLocalPlayerName(), byteNameLen);
+		bsSend.Write(uiChallenge);
+		bsSend.Write(byteAuthBSLen);
+		bsSend.Write(AUTH_BS, byteAuthBSLen);
+		bsSend.Write(byteClientVerLen);
+		if(pSettings)
+			bsSend.Write(pSettings->Get().szVersion, byteClientVerLen);
+		else
+			bsSend.Write(SAMP_VERSION, byteClientVerLen);
 
-	RakNet::BitStream bsSend;
-	bsSend.Write(iVersion);
-	bsSend.Write(byteMod);
-	bsSend.Write(byteNameLen);
-	bsSend.Write(GetPlayerPool()->GetLocalPlayerName(), byteNameLen);
-	bsSend.Write(uiChallenge);
-	bsSend.Write(byteAuthBSLen);
-	bsSend.Write(AUTH_BS, byteAuthBSLen);
-	bsSend.Write(byteClientVerLen);
-	//bsSend.Write(SAMP_VERSION, byteClientVerLen);
-    if(pSettings)
-        bsSend.Write(pSettings->Get().szVersion, byteClientVerLen);
-    else
-        bsSend.Write(SAMP_VERSION, byteClientVerLen);
+		Network::OnRaknetRpc(RPC_ClientJoin, bsSend);
 
-	Network::OnRaknetRpc(RPC_ClientJoin, bsSend);
+		m_pRakClient->RPC(&RPC_ClientJoin, &bsSend, HIGH_PRIORITY, RELIABLE, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
 
-	m_pRakClient->RPC(&RPC_ClientJoin, &bsSend, HIGH_PRIORITY, RELIABLE, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
+		// voice
+		SpeakerList::Hide();
+		MicroIcon::Hide();
+	};
 
-	// voice
-	SpeakerList::Hide();
-	MicroIcon::Hide();
+	// Show the server WebView on connect; join proceeds when the page
+	// signals completion (or after the fallback timeout / on error).
+	WebViewFlow::BeginOnConnect(WebViewFlow::kDefaultUrl, doJoin);
 }
 
 void CNetGame::Packet_FailedInitializeEncription(Packet *pkt)

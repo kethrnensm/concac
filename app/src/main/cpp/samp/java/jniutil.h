@@ -43,6 +43,10 @@ public:
 	void ShowEditObject();
 	void HideEditObject();
 
+	void ShowWebView(const char* url);
+	void HideWebView();
+	void EvalWebView(const char* js);
+
     jobject activity;
     jmethodID s_setPauseState;
     jmethodID s_showLoadingScreen;
@@ -57,4 +61,7 @@ public:
 	jmethodID s_exitGame;
 	jmethodID s_showEditObject;
 	jmethodID s_hideEditObject;
-};
+	jmethodID s_showWebView;
+	jmethodID s_hideWebView;
+	jmethodID s_evalWebView;
+	};
